@@ -1,4 +1,4 @@
-name: Build Android Probe APK
+name: Build Android Probe APK + AAB
 
 on:
   pull_request:
@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -40,33 +40,43 @@ jobs:
       - name: Static privacy validation
         run: python3 tools/static_validate.py
 
-      - name: Build debug APK
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Build debug APK and release AAB
+        run: |
+          gradle --no-daemon --stacktrace :app:assembleDebug
+          gradle --no-daemon --stacktrace :app:bundleRelease
 
-      - name: Inspect APK permissions and metadata
+      - name: Inspect artifacts
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
+          AAB="app/build/outputs/bundle/release/app-release.aab"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           test -f "$APK"
+          test -f "$AAB"
+
           "$AAPT" dump permissions "$APK" | tee permissions.txt
           "$AAPT" dump badging "$APK" | tee badging.txt
           if grep -q "android.permission.INTERNET" permissions.txt; then
             echo "ERROR: INTERNET permission must not be present"
             exit 1
           fi
-          sha256sum "$APK" | tee sha256.txt
-          cp "$APK" PipSniper_Zalo_Probe_V0.2-debug.apk
 
-      - name: Upload verified APK artifact
+          sha256sum "$APK" | tee apk-sha256.txt
+          sha256sum "$AAB" | tee aab-unsigned-sha256.txt
+          cp "$APK" PipSniper_Zalo_Probe_V0.2-debug.apk
+          cp "$AAB" PipSniper_Zalo_Probe_V0.2-release-unsigned.aab
+
+      - name: Upload CI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PipSniper-Zalo-Probe-V0.2-verified
+          name: PipSniper-Zalo-Probe-V0.2-apk-aab-ci
           if-no-files-found: error
           retention-days: 14
           path: |
             PipSniper_Zalo_Probe_V0.2-debug.apk
-            sha256.txt
+            PipSniper_Zalo_Probe_V0.2-release-unsigned.aab
+            apk-sha256.txt
+            aab-unsigned-sha256.txt
             permissions.txt
             badging.txt
