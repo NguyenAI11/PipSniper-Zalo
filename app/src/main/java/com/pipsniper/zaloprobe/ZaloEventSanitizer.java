@@ -7,7 +7,6 @@ import android.graphics.Bitmap;
 import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Parcelable;
 import android.service.notification.StatusBarNotification;
 
 import org.json.JSONArray;
@@ -52,10 +51,10 @@ final class ZaloEventSanitizer {
                 meta.put("channel_id", fp(c, n.getChannelId()));
                 meta.put("group_alert_behavior", n.getGroupAlertBehavior());
                 meta.put("timeout_after", n.getTimeoutAfter());
-            }
-            if (Build.VERSION.SDK_INT >= 29) meta.put("allow_system_generated_contextual_actions", n.getAllowSystemGeneratedContextualActions());
-            if (Build.VERSION.SDK_INT >= 28) {
                 meta.put("shortcut_id", fp(c, n.getShortcutId()));
+            }
+            if (Build.VERSION.SDK_INT >= 29) {
+                meta.put("allow_system_generated_contextual_actions", n.getAllowSystemGeneratedContextualActions());
                 if (n.getLocusId() != null) meta.put("locus_id", fp(c, n.getLocusId().getId()));
             }
             root.put("notification", meta);
@@ -63,7 +62,7 @@ final class ZaloEventSanitizer {
             root.put("standard_fields", standardFields(c, n.extras));
             root.put("extras", sanitizeBundle(c, n.extras, 0));
             root.put("messaging_style", messagingStyle(c, n));
-        } catch (Exception e) {
+        } catch (Throwable e) {
             try { root.put("sanitize_error", e.getClass().getSimpleName()); } catch (Exception ignored) {}
         }
         return root;
@@ -86,30 +85,22 @@ final class ZaloEventSanitizer {
 
     private static JSONObject messagingStyle(Context c, Notification n) {
         JSONObject out = new JSONObject();
-        if (Build.VERSION.SDK_INT < 24) return out;
+        if (Build.VERSION.SDK_INT < 24 || n.extras == null) return out;
         try {
-            Notification.MessagingStyle style = Notification.MessagingStyle.extractMessagingStyleFromNotification(n);
-            if (style == null) return out;
-            if (Build.VERSION.SDK_INT >= 28) out.put("is_group_conversation", style.isGroupConversation());
-            putSafe(c, out, "conversation_title", style.getConversationTitle());
-            JSONArray messages = new JSONArray();
-            List<Notification.MessagingStyle.Message> list = style.getMessages();
-            int start = Math.max(0, list.size() - 20);
-            for (int i = start; i < list.size(); i++) {
-                Notification.MessagingStyle.Message m = list.get(i);
-                JSONObject mo = new JSONObject();
-                putSafe(c, mo, "text", m.getText());
-                mo.put("timestamp_ms", m.getTimestamp());
-                if (Build.VERSION.SDK_INT >= 28) {
-                    Person p = m.getSenderPerson();
-                    if (p != null) mo.put("sender", sanitizePerson(c, p));
-                } else {
-                    putSafe(c, mo, "sender", m.getSender());
-                }
-                messages.put(mo);
+            Bundle b = n.extras;
+            putSafe(c, out, "conversation_title", b.get(Notification.EXTRA_CONVERSATION_TITLE));
+            putSafe(c, out, "self_display_name", b.get(Notification.EXTRA_SELF_DISPLAY_NAME));
+
+            // MessagingStyle payloads are stored in notification extras. Reading the raw
+            // extras is both API-stable and more useful for a probe than reconstructing
+            // a framework MessagingStyle object. Values are sanitized/hashed below.
+            if (b.containsKey("android.isGroupConversation")) {
+                out.put("is_group_conversation", b.getBoolean("android.isGroupConversation"));
             }
-            out.put("message_count", list.size());
-            out.put("messages_tail", messages);
+            Object messages = b.get(Notification.EXTRA_MESSAGES);
+            if (messages != null) out.put("messages", sanitizeValue(c, messages, 0));
+            Object historic = b.get("android.messages.historic");
+            if (historic != null) out.put("historic_messages", sanitizeValue(c, historic, 0));
         } catch (Throwable t) {
             try { out.put("extract_error", t.getClass().getSimpleName()); } catch (Exception ignored) {}
         }
