@@ -10,14 +10,23 @@ public class ZaloNotificationListener extends NotificationListenerService {
         BridgePrefs.setListenerConnected(this, true);
         RouteStore.ensureSeedRoutes(this);
         TelegramDispatcher.kick(this);
+        TelegramBotRuntime.start(this);
     }
 
     @Override
     public void onListenerDisconnected() {
         BridgePrefs.setListenerConnected(this, false);
+        TelegramBotRuntime.stop();
         try { requestRebind(new android.content.ComponentName(this, ZaloNotificationListener.class)); }
         catch (Throwable ignored) {}
         super.onListenerDisconnected();
+    }
+
+    @Override
+    public void onDestroy() {
+        TelegramBotRuntime.stop();
+        BridgePrefs.setListenerConnected(this, false);
+        super.onDestroy();
     }
 
     @Override
