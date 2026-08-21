@@ -30,6 +30,18 @@ public final class BotSecurity {
         return userId != 0L && userId == ownerId(c);
     }
 
+    public static synchronized boolean claimOwner(Context c, long userId, long privateOrControlChatId) {
+        if (paired(c)) return isOwner(c, userId);
+        if (userId == 0L || privateOrControlChatId == 0L) return false;
+        BridgePrefs.prefs(c).edit()
+                .putLong(OWNER_ID, userId)
+                .putLong(OWNER_CHAT_ID, privateOrControlChatId)
+                .remove(PAIR_CODE)
+                .remove(PAIR_EXPIRES)
+                .apply();
+        return true;
+    }
+
     public static synchronized String ensurePairCode(Context c) {
         long now = System.currentTimeMillis();
         String current = BridgePrefs.prefs(c).getString(PAIR_CODE, "");
