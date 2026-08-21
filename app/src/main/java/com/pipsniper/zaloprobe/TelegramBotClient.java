@@ -36,7 +36,7 @@ public final class TelegramBotClient {
         return get(token, "getWebhookInfo", "");
     }
 
-    public static ApiResult getUpdates(String token, long offset, int timeoutSeconds) {
+    public static synchronized ApiResult getUpdates(String token, long offset, int timeoutSeconds) {
         try {
             String allowed = "[\"message\",\"edited_message\",\"channel_post\",\"edited_channel_post\",\"my_chat_member\",\"callback_query\"]";
             String q = "offset=" + offset
@@ -70,7 +70,8 @@ public final class TelegramBotClient {
     public static ApiResult setDefaultCommands(String token) {
         try {
             JSONArray commands = new JSONArray();
-            commands.put(command("start", "Khởi động / ghép chủ bot"));
+            commands.put(command("start", "Khởi động Smart Bot"));
+            commands.put(command("claim", "Xác nhận Owner từ group do bạn tạo"));
             commands.put(command("help", "Danh sách lệnh"));
             commands.put(command("status", "Trạng thái Bridge"));
             commands.put(command("health", "Kiểm tra sức khỏe hệ thống"));
