@@ -1,0 +1,11 @@
+PipSniper Zalo Probe V0.2 privacy checklist
+
+[PASS] AndroidManifest.xml does NOT declare android.permission.INTERNET
+[PASS] Listener accepts only package com.zing.zalo
+[PASS] No READ/WRITE external-storage permission
+[PASS] No Accessibility service
+[PASS] No camera/microphone/location/contact/SMS permission
+[PASS] No Zalo cookie/session/database access
+[PASS] Export requires explicit user action
+[PASS] Text-like data is hashed with per-install non-exported salt
+[PASS] Unknown Parcelable/object payloads are not stringified into report

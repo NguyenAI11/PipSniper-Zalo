@@ -1,0 +1,6 @@
+Bản thử nghiệm nội bộ PipSniper Zalo Probe V0.2.
+- Thu thập metadata notification của Zalo để đánh giá khả năng nhận diện hội thoại/nhóm ổn định.
+- Không có quyền INTERNET.
+- Không dùng Accessibility.
+- Dữ liệu nhạy cảm được băm cục bộ trước khi lưu.
+- Báo cáo JSON chỉ được xuất thủ công bởi người dùng.
