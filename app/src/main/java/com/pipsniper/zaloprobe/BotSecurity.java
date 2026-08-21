@@ -42,6 +42,11 @@ public final class BotSecurity {
         return true;
     }
 
+    public static void rememberOwnerPrivateChat(Context c, long userId, long chatId) {
+        if (!isOwner(c, userId) || chatId == 0L) return;
+        BridgePrefs.prefs(c).edit().putLong(OWNER_CHAT_ID, chatId).apply();
+    }
+
     public static synchronized String ensurePairCode(Context c) {
         long now = System.currentTimeMillis();
         String current = BridgePrefs.prefs(c).getString(PAIR_CODE, "");
