@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Intentionally NO INTERNET permission. Probe data cannot be uploaded by this app. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <queries>
         <package android:name="com.zing.zalo" />
     </queries>
@@ -9,7 +12,7 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:label="PipSniper Zalo Probe"
+        android:label="PipSniper Zalo Bridge"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
 
@@ -24,12 +27,27 @@
 
         <service
             android:name=".ZaloNotificationListener"
-            android:label="@string/listener_label"
+            android:label="PipSniper Zalo Bridge"
             android:exported="false"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".RetryJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
