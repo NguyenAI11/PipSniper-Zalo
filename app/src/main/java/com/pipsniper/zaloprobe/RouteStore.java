@@ -40,7 +40,7 @@ public final class RouteStore {
         boolean replaced = false;
         for (int i = 0; i < routes.size(); i++) {
             Route existing = routes.get(i);
-            if (existing.id.equals(route.id) || existing.notificationId == route.notificationId) {
+            if (existing.id.equals(route.id)) {
                 routes.set(i, route);
                 replaced = true;
                 break;
@@ -54,11 +54,19 @@ public final class RouteStore {
         List<Route> routes = load(c);
         routes.removeIf(r -> r.id.equals(id));
         save(c, routes);
+        DedupStore.resetRoute(c, id);
     }
 
-    public static synchronized Route find(Context c, int notificationId) {
-        for (Route r : load(c)) if (r.notificationId == notificationId) return r;
-        return null;
+    public static synchronized List<Route> findAllMatching(Context c, int notificationId, String currentKeyHash) {
+        List<Route> out = new ArrayList<>();
+        for (Route r : load(c)) {
+            if (r.notificationId != notificationId || !r.ready()) continue;
+            String stored = r.keyHash == null ? "" : r.keyHash.trim();
+            String current = currentKeyHash == null ? "" : currentKeyHash.trim();
+            if (!stored.isEmpty() && !current.isEmpty() && !stored.equals(current)) continue;
+            out.add(r);
+        }
+        return out;
     }
 
     public static synchronized void ensureSeedRoutes(Context c) {
