@@ -6,7 +6,6 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
-import java.net.URLEncoder;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -82,35 +81,32 @@ public final class TelegramDiscovery {
             return out;
         }
         try {
-            JSONObject wh = get(api(token, "getWebhookInfo"));
-            if (wh.optBoolean("ok", false)) {
-                JSONObject wr = wh.optJSONObject("result");
-                if (wr != null) {
-                    out.webhookUrl = wr.optString("url", "");
-                    out.pendingUpdates = wr.optInt("pending_update_count", 0);
-                }
+            TelegramBotClient.ApiResult wh = TelegramBotClient.getWebhookInfo(token);
+            JSONObject wr = wh.resultObject();
+            if (wh.ok && wr != null) {
+                out.webhookUrl = wr.optString("url", "");
+                out.pendingUpdates = wr.optInt("pending_update_count", 0);
             }
             if (out.webhookUrl != null && !out.webhookUrl.isEmpty()) {
-                out.message = "Bot đang dùng webhook nên không thể quét bằng getUpdates.";
+                out.message = "Bot đang dùng webhook nên Smart Bot/getUpdates không thể hoạt động.";
                 return out;
             }
 
-            String allowed = "[\"message\",\"edited_message\",\"channel_post\",\"edited_channel_post\",\"my_chat_member\"]";
-            String url = api(token, "getUpdates") + "?timeout=0&limit=100&allowed_updates=" + enc(allowed);
-            JSONObject root = get(url);
-            if (!root.optBoolean("ok", false)) {
-                out.message = root.optString("description", "getUpdates failed");
+            // Peek at currently unconfirmed updates through the same serialized client
+            // used by Smart Bot. Do not advance the offset here: the runtime owns
+            // confirmation and command processing, preventing discovery from eating commands.
+            TelegramBotClient.ApiResult updates = TelegramBotClient.getUpdates(token, 0L, 0);
+            if (!updates.ok) {
+                out.message = updates.error == null || updates.error.isEmpty() ? "getUpdates failed" : updates.error;
                 return out;
             }
 
-            JSONArray arr = root.optJSONArray("result");
+            JSONArray arr = updates.resultArray();
             Map<Long, ChatCandidate> unique = new LinkedHashMap<>();
-            long maxUpdateId = -1L;
             if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject update = arr.optJSONObject(i);
                     if (update == null) continue;
-                    maxUpdateId = Math.max(maxUpdateId, update.optLong("update_id", -1L));
                     collectChat(update.optJSONObject("message"), unique);
                     collectChat(update.optJSONObject("edited_message"), unique);
                     collectChat(update.optJSONObject("channel_post"), unique);
@@ -121,13 +117,7 @@ public final class TelegramDiscovery {
             }
             out.chats.addAll(unique.values());
             out.ok = true;
-            out.message = out.chats.isEmpty() ? "Chưa phát hiện group/channel Telegram." : "OK";
-
-            if (maxUpdateId >= 0) {
-                try {
-                    get(api(token, "getUpdates") + "?offset=" + (maxUpdateId + 1L) + "&timeout=0&limit=1");
-                } catch (Exception ignored) {}
-            }
+            out.message = out.chats.isEmpty() ? "Chưa phát hiện group/channel mới. Các group Smart Bot đã nhận trước đó vẫn được giữ trong bộ nhớ app." : "OK";
             return out;
         } catch (Exception e) {
             out.message = e.getClass().getSimpleName();
@@ -163,7 +153,7 @@ public final class TelegramDiscovery {
             con.setReadTimeout(20_000);
             con.setUseCaches(false);
             con.setRequestProperty("Accept", "application/json");
-            con.setRequestProperty("User-Agent", "PipSniper-Zalo-Bridge/1.1");
+            con.setRequestProperty("User-Agent", "PipSniper-Zalo-Bridge/1.2");
             int code = con.getResponseCode();
             InputStream raw = code >= 200 && code < 400 ? con.getInputStream() : con.getErrorStream();
             String body = raw == null ? "{}" : readAll(raw);
@@ -192,9 +182,5 @@ public final class TelegramDiscovery {
 
     private static String api(String token, String method) {
         return "https://api.telegram.org/bot" + token.trim() + "/" + method;
-    }
-
-    private static String enc(String s) throws Exception {
-        return URLEncoder.encode(s, StandardCharsets.UTF_8.name());
     }
 }
