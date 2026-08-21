@@ -30,6 +30,7 @@ import java.util.Locale;
 public class MainActivity extends Activity {
     private TextView listenerStatus;
     private TextView telegramStatus;
+    private TextView botIdentity;
     private TextView bridgeStatus;
     private TextView statsText;
     private LinearLayout routesBox;
@@ -104,8 +105,11 @@ public class MainActivity extends Activity {
         LinearLayout telegram = card();
         telegram.addView(text("2. Kết nối Telegram", 17, Color.rgb(15, 23, 42), Typeface.BOLD));
         telegramStatus = text("", 14, Color.rgb(71, 85, 105), Typeface.NORMAL);
-        telegramStatus.setPadding(0, dp(8), 0, dp(8));
+        telegramStatus.setPadding(0, dp(8), 0, dp(4));
         telegram.addView(telegramStatus);
+        botIdentity = text("", 13, Color.rgb(51, 65, 85), Typeface.NORMAL);
+        botIdentity.setPadding(0, 0, 0, dp(8));
+        telegram.addView(botIdentity);
         tokenInput = new EditText(this);
         tokenInput.setHint(SecureStore.hasBotToken(this) ? "Bot Token đã lưu — nhập mới để thay" : "Telegram Bot Token");
         tokenInput.setSingleLine(true);
@@ -117,6 +121,9 @@ public class MainActivity extends Activity {
         Button test = primaryButton("LƯU & KIỂM TRA TELEGRAM");
         test.setOnClickListener(v -> testTelegram());
         telegram.addView(test);
+        Button scanTg = secondaryButton("QUÉT NHÓM TELEGRAM");
+        scanTg.setOnClickListener(v -> scanTelegramChats(null));
+        telegram.addView(scanTg, lp(-1, dp(46), 0, 8, 0, 0));
         root.addView(telegram, lp(-1, -2, 0, 0, 0, 12));
 
         LinearLayout routes = card();
@@ -126,7 +133,7 @@ public class MainActivity extends Activity {
         TextView routeTitle = text("3. Liên kết chuyên gia", 17, Color.rgb(15, 23, 42), Typeface.BOLD);
         routeHeader.addView(routeTitle, new LinearLayout.LayoutParams(0, -2, 1f));
         routes.addView(routeHeader);
-        TextView hint = text("Khi một nhóm Zalo có notification mới, app sẽ đưa nguồn đó vào danh sách để bạn liên kết với Telegram đích.", 13, Color.rgb(100, 116, 139), Typeface.NORMAL);
+        TextView hint = text("Chọn nguồn Zalo rồi chọn nhóm Telegram theo tên. Không cần tự tìm Chat ID.", 13, Color.rgb(100, 116, 139), Typeface.NORMAL);
         hint.setPadding(0, dp(8), 0, dp(10));
         routes.addView(hint);
         Button add = primaryButton("+ THÊM TỪ ZALO GẦN ĐÂY");
@@ -163,6 +170,10 @@ public class MainActivity extends Activity {
         boolean tested = BridgePrefs.prefs(this).getBoolean("telegram_test_ok", false);
         telegramStatus.setText(bot ? (tested ? "● Bot Token đã lưu — kết nối kiểm tra OK" : "● Bot Token đã lưu — chưa kiểm tra") : "● Chưa cấu hình Bot Token");
         telegramStatus.setTextColor(bot ? Color.rgb(22, 101, 52) : Color.rgb(180, 83, 9));
+        String username = BridgePrefs.prefs(this).getString("telegram_bot_username", "");
+        botIdentity.setText(username == null || username.isEmpty()
+                ? ""
+                : "Bot đang dùng: @" + username + "\nĐể nhận diện group private, thêm bot vào group rồi gửi /bridge@" + username);
 
         boolean enabled = BridgePrefs.enabled(this);
         bridgeStatus.setText(enabled ? "● ĐANG CHUYỂN TIẾP" : "● ĐÃ TẠM DỪNG");
@@ -189,8 +200,7 @@ public class MainActivity extends Activity {
         routesBox.removeAllViews();
         List<Route> routes = RouteStore.load(this);
         if (routes.isEmpty()) {
-            TextView empty = text("Chưa có liên kết nào.", 14, Color.rgb(100, 116, 139), Typeface.NORMAL);
-            routesBox.addView(empty);
+            routesBox.addView(text("Chưa có liên kết nào.", 14, Color.rgb(100, 116, 139), Typeface.NORMAL));
             return;
         }
         for (Route r : routes) {
@@ -249,12 +259,17 @@ public class MainActivity extends Activity {
         form.setPadding(dp(20), dp(4), dp(20), 0);
 
         EditText label = field(route.label, "Tên chuyên gia / nhóm Zalo");
-        EditText chat = field(route.telegramChat, "Telegram Chat ID hoặc @channel");
+        EditText chat = field(route.telegramChat, "Telegram Chat ID");
+        chat.setFocusable(false);
+        chat.setClickable(true);
         CheckBox enabled = new CheckBox(this);
         enabled.setText("Bật auto forward");
         enabled.setChecked(route.enabled);
         form.addView(label, lp(-1, dp(52), 0, 8, 0, 8));
-        form.addView(chat, lp(-1, dp(52), 0, 0, 0, 8));
+        form.addView(chat, lp(-1, dp(52), 0, 0, 0, 6));
+        Button chooseTg = secondaryButton("CHỌN NHÓM TELEGRAM");
+        chooseTg.setOnClickListener(v -> scanTelegramChats(chat));
+        form.addView(chooseTg, lp(-1, dp(44), 0, 0, 0, 8));
         form.addView(enabled);
         TextView source = text("Nguồn Zalo ID: " + route.notificationId, 12, Color.rgb(100, 116, 139), Typeface.NORMAL);
         source.setPadding(0, dp(6), 0, 0);
@@ -272,7 +287,7 @@ public class MainActivity extends Activity {
                 String l = label.getText().toString().trim();
                 String c = chat.getText().toString().trim();
                 if (l.isEmpty() || c.isEmpty()) {
-                    Toast.makeText(this, "Cần nhập tên và Telegram đích.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Cần chọn tên và nhóm Telegram đích.", Toast.LENGTH_LONG).show();
                     return;
                 }
                 route.label = l;
@@ -310,14 +325,79 @@ public class MainActivity extends Activity {
         }
         telegramStatus.setText("● Đang kiểm tra Telegram...");
         new Thread(() -> {
-            TelegramApi.Result r = TelegramApi.testBot(token);
-            BridgePrefs.prefs(this).edit().putBoolean("telegram_test_ok", r.ok).putString("last_error", r.ok ? "" : r.message).apply();
+            TelegramDiscovery.BotProfile p = TelegramDiscovery.profile(token);
+            BridgePrefs.prefs(this).edit()
+                    .putBoolean("telegram_test_ok", p.ok)
+                    .putString("telegram_bot_username", p.ok ? p.username : "")
+                    .putString("last_error", p.ok ? "" : p.error)
+                    .apply();
             runOnUiThread(() -> {
-                Toast.makeText(this, r.ok ? "Telegram Bot kết nối OK." : "Telegram lỗi: " + r.message, Toast.LENGTH_LONG).show();
+                String msg = p.ok ? "Telegram Bot kết nối OK: @" + p.username : "Telegram lỗi: " + p.error;
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
                 refreshStatus();
-                if (r.ok) TelegramDispatcher.kick(this);
+                if (p.ok) TelegramDispatcher.kick(this);
             });
         }).start();
+    }
+
+    private void scanTelegramChats(EditText targetField) {
+        String token = SecureStore.getBotToken(this);
+        if (token.isEmpty()) {
+            Toast.makeText(this, "Hãy lưu Bot Token trước.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Toast.makeText(this, "Đang quét group/channel Telegram...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            TelegramDiscovery.ScanResult r = TelegramDiscovery.scanChats(token);
+            if (r.bot != null && r.bot.ok) {
+                BridgePrefs.prefs(this).edit().putString("telegram_bot_username", r.bot.username).apply();
+            }
+            if (r.ok && !r.chats.isEmpty()) TelegramChatStore.merge(this, r.chats);
+            List<TelegramDiscovery.ChatCandidate> cached = TelegramChatStore.load(this);
+            runOnUiThread(() -> {
+                refreshStatus();
+                if (!r.ok) {
+                    new AlertDialog.Builder(this)
+                            .setTitle("Không quét được Telegram")
+                            .setMessage(r.message)
+                            .setPositiveButton("OK", null)
+                            .show();
+                    return;
+                }
+                if (cached.isEmpty()) {
+                    String username = r.bot == null ? "" : r.bot.username;
+                    String command = username == null || username.isEmpty() ? "/bridge" : "/bridge@" + username;
+                    new AlertDialog.Builder(this)
+                            .setTitle("Chưa thấy nhóm Telegram")
+                            .setMessage("1. Thêm bot vào group/channel cần nhận tín hiệu.\n2. Trong group gửi đúng lệnh:\n\n" + command + "\n\n3. Quay lại app và bấm QUÉT NHÓM TELEGRAM lần nữa.\n\nBot không cần trả lời lệnh này; app chỉ dùng update để nhận diện group private.")
+                            .setPositiveButton("OK", null)
+                            .show();
+                    return;
+                }
+                showTelegramChoices(cached, targetField);
+            });
+        }).start();
+    }
+
+    private void showTelegramChoices(List<TelegramDiscovery.ChatCandidate> chats, EditText targetField) {
+        String[] labels = new String[chats.size()];
+        for (int i = 0; i < chats.size(); i++) {
+            TelegramDiscovery.ChatCandidate c = chats.get(i);
+            labels[i] = c.displayName() + "\n" + c.type + " • " + c.id;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(targetField == null ? "Nhóm Telegram đã phát hiện" : "Chọn Telegram đích")
+                .setItems(labels, (d, which) -> {
+                    TelegramDiscovery.ChatCandidate c = chats.get(which);
+                    if (targetField != null) {
+                        targetField.setText(c.target());
+                        Toast.makeText(this, "Đã chọn “" + c.displayName() + "”", Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(this, "Đã phát hiện “" + c.displayName() + "” • ID " + c.id, Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Đóng", null)
+                .show();
     }
 
     private void testRoute(Route route) {
