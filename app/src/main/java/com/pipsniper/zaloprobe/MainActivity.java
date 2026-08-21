@@ -7,14 +7,16 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.InputType;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -22,15 +24,16 @@ import android.widget.Toast;
 
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends Activity {
-    private static final int REQ_EXPORT = 1001;
-    private TextView accessStatus;
-    private TextView captureStatus;
-    private TextView countText;
-    private TextView lastText;
-    private Button captureButton;
+    private TextView listenerStatus;
+    private TextView telegramStatus;
+    private TextView bridgeStatus;
+    private TextView statsText;
+    private LinearLayout routesBox;
+    private EditText tokenInput;
     private final android.os.Handler handler = new android.os.Handler();
 
     private final Runnable refreshLoop = new Runnable() {
@@ -43,8 +46,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
-        setTitle("PipSniper Zalo Probe");
+        setTitle("PipSniper Zalo Bridge");
+        RouteStore.ensureSeedRoutes(this);
         setContentView(buildUi());
+        TelegramDispatcher.kick(this);
     }
 
     @Override protected void onResume() {
@@ -61,96 +66,269 @@ public class MainActivity extends Activity {
     private View buildUi() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(Color.rgb(244, 246, 250));
-
+        scroll.setBackgroundColor(Color.rgb(245, 247, 250));
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(24), dp(20), dp(36));
-        scroll.addView(root, new ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.setPadding(dp(18), dp(22), dp(18), dp(34));
+        scroll.addView(root, new ScrollView.LayoutParams(-1, -2));
 
-        TextView title = text("PipSniper Zalo Probe", 26, Color.rgb(15, 23, 42), Typeface.BOLD);
-        root.addView(title);
-        TextView subtitle = text("Đo metadata notification Zalo trên chính điện thoại của bạn", 15, Color.rgb(71, 85, 105), Typeface.NORMAL);
-        subtitle.setPadding(0, dp(6), 0, dp(14));
+        root.addView(text("PipSniper Zalo Bridge", 26, Color.rgb(15, 23, 42), Typeface.BOLD));
+        TextView subtitle = text("Zalo → Telegram • chuyển nguyên văn • không AI", 14, Color.rgb(71, 85, 105), Typeface.NORMAL);
+        subtitle.setPadding(0, dp(5), 0, dp(14));
         root.addView(subtitle);
 
-        TextView privacy = text("OFFLINE  •  KHÔNG CÓ QUYỀN INTERNET", 12, Color.rgb(22, 101, 52), Typeface.BOLD);
-        privacy.setGravity(Gravity.CENTER);
-        privacy.setPadding(dp(12), dp(9), dp(12), dp(9));
-        privacy.setBackground(roundRect(Color.rgb(220, 252, 231), 14));
-        root.addView(privacy, lp(-1, -2, 0, 0, 0, 18));
+        LinearLayout master = card();
+        master.addView(text("Trạng thái Bridge", 17, Color.rgb(15, 23, 42), Typeface.BOLD));
+        bridgeStatus = text("", 14, Color.rgb(71, 85, 105), Typeface.NORMAL);
+        bridgeStatus.setPadding(0, dp(8), 0, dp(10));
+        master.addView(bridgeStatus);
+        Button toggle = secondaryButton("BẬT / TẮT CHUYỂN TIẾP");
+        toggle.setOnClickListener(v -> {
+            BridgePrefs.setEnabled(this, !BridgePrefs.enabled(this));
+            if (BridgePrefs.enabled(this)) TelegramDispatcher.kick(this);
+            refreshStatus();
+        });
+        master.addView(toggle);
+        root.addView(master, lp(-1, -2, 0, 0, 0, 12));
 
-        LinearLayout accessCard = card();
-        accessCard.addView(text("1. Quyền Notification Access", 18, Color.rgb(15, 23, 42), Typeface.BOLD));
-        accessStatus = text("Đang kiểm tra...", 14, Color.rgb(71, 85, 105), Typeface.NORMAL);
-        accessStatus.setPadding(0, dp(8), 0, dp(12));
-        accessCard.addView(accessStatus);
-        Button accessButton = primaryButton("CẤP / KIỂM TRA QUYỀN");
-        accessButton.setOnClickListener(v -> openNotificationAccess());
-        accessCard.addView(accessButton);
-        root.addView(accessCard, lp(-1, -2, 0, 0, 0, 14));
+        LinearLayout zalo = card();
+        zalo.addView(text("1. Kết nối Zalo", 17, Color.rgb(15, 23, 42), Typeface.BOLD));
+        listenerStatus = text("Đang kiểm tra...", 14, Color.rgb(71, 85, 105), Typeface.NORMAL);
+        listenerStatus.setPadding(0, dp(8), 0, dp(10));
+        zalo.addView(listenerStatus);
+        Button access = primaryButton("CẤP / KIỂM TRA NOTIFICATION ACCESS");
+        access.setOnClickListener(v -> openNotificationAccess());
+        zalo.addView(access);
+        root.addView(zalo, lp(-1, -2, 0, 0, 0, 12));
 
-        LinearLayout captureCard = card();
-        captureCard.addView(text("2. Thu thập tự động", 18, Color.rgb(15, 23, 42), Typeface.BOLD));
-        captureStatus = text("", 14, Color.rgb(71, 85, 105), Typeface.NORMAL);
-        captureStatus.setPadding(0, dp(8), 0, dp(4));
-        captureCard.addView(captureStatus);
-        countText = text("0 sự kiện", 28, Color.rgb(37, 99, 235), Typeface.BOLD);
-        countText.setPadding(0, dp(6), 0, dp(2));
-        captureCard.addView(countText);
-        lastText = text("Chưa có notification Zalo", 13, Color.rgb(100, 116, 139), Typeface.NORMAL);
-        lastText.setPadding(0, 0, 0, dp(12));
-        captureCard.addView(lastText);
-        captureButton = secondaryButton("TẠM DỪNG THU THẬP");
-        captureButton.setOnClickListener(v -> toggleCapture());
-        captureCard.addView(captureButton);
-        root.addView(captureCard, lp(-1, -2, 0, 0, 0, 14));
+        LinearLayout telegram = card();
+        telegram.addView(text("2. Kết nối Telegram", 17, Color.rgb(15, 23, 42), Typeface.BOLD));
+        telegramStatus = text("", 14, Color.rgb(71, 85, 105), Typeface.NORMAL);
+        telegramStatus.setPadding(0, dp(8), 0, dp(8));
+        telegram.addView(telegramStatus);
+        tokenInput = new EditText(this);
+        tokenInput.setHint(SecureStore.hasBotToken(this) ? "Bot Token đã lưu — nhập mới để thay" : "Telegram Bot Token");
+        tokenInput.setSingleLine(true);
+        tokenInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        tokenInput.setTextSize(14);
+        tokenInput.setPadding(dp(12), dp(10), dp(12), dp(10));
+        tokenInput.setBackground(roundRect(Color.rgb(248, 250, 252), 12));
+        telegram.addView(tokenInput, lp(-1, dp(50), 0, 0, 0, 10));
+        Button test = primaryButton("LƯU & KIỂM TRA TELEGRAM");
+        test.setOnClickListener(v -> testTelegram());
+        telegram.addView(test);
+        root.addView(telegram, lp(-1, -2, 0, 0, 0, 12));
 
-        LinearLayout guideCard = card();
-        guideCard.addView(text("Cách test", 18, Color.rgb(15, 23, 42), Typeface.BOLD));
-        TextView guide = text(
-                "• Cấp Notification Access một lần.\n" +
-                "• Để Zalo hoạt động bình thường trong vài giờ hoặc một ngày.\n" +
-                "• Nên có tin nhắn từ nhiều nhóm khác nhau.\n" +
-                "• Không cần forward và không cần mở PipSniper trong lúc thu thập.\n" +
-                "• Khi đủ dữ liệu, quay lại đây và bấm Xuất báo cáo.",
-                14, Color.rgb(51, 65, 85), Typeface.NORMAL);
-        guide.setLineSpacing(dp(3), 1f);
-        guide.setPadding(0, dp(10), 0, 0);
-        guideCard.addView(guide);
-        root.addView(guideCard, lp(-1, -2, 0, 0, 0, 14));
+        LinearLayout routes = card();
+        LinearLayout routeHeader = new LinearLayout(this);
+        routeHeader.setOrientation(LinearLayout.HORIZONTAL);
+        routeHeader.setGravity(Gravity.CENTER_VERTICAL);
+        TextView routeTitle = text("3. Liên kết chuyên gia", 17, Color.rgb(15, 23, 42), Typeface.BOLD);
+        routeHeader.addView(routeTitle, new LinearLayout.LayoutParams(0, -2, 1f));
+        routes.addView(routeHeader);
+        TextView hint = text("Khi một nhóm Zalo có notification mới, app sẽ đưa nguồn đó vào danh sách để bạn liên kết với Telegram đích.", 13, Color.rgb(100, 116, 139), Typeface.NORMAL);
+        hint.setPadding(0, dp(8), 0, dp(10));
+        routes.addView(hint);
+        Button add = primaryButton("+ THÊM TỪ ZALO GẦN ĐÂY");
+        add.setOnClickListener(v -> chooseRecentSource());
+        routes.addView(add, lp(-1, dp(48), 0, 0, 0, 12));
+        routesBox = new LinearLayout(this);
+        routesBox.setOrientation(LinearLayout.VERTICAL);
+        routes.addView(routesBox);
+        root.addView(routes, lp(-1, -2, 0, 0, 0, 12));
 
-        Button export = primaryButton("XUẤT BÁO CÁO");
-        export.setOnClickListener(v -> createReportDocument());
-        root.addView(export, lp(-1, dp(52), 0, 0, 0, 10));
+        LinearLayout stats = card();
+        stats.addView(text("Theo dõi", 17, Color.rgb(15, 23, 42), Typeface.BOLD));
+        statsText = text("", 14, Color.rgb(51, 65, 85), Typeface.NORMAL);
+        statsText.setPadding(0, dp(8), 0, 0);
+        stats.addView(statsText);
+        root.addView(stats);
 
-        Button clear = secondaryButton("XÓA DỮ LIỆU ĐÃ THU THẬP");
-        clear.setOnClickListener(v -> confirmClear());
-        root.addView(clear, lp(-1, dp(48), 0, 0, 0, 16));
-
-        TextView foot = text("Chỉ notification từ com.zing.zalo được ghi. Nội dung và identifier trong báo cáo được hash bằng salt cục bộ; app không có INTERNET permission.", 12, Color.rgb(100, 116, 139), Typeface.NORMAL);
+        TextView foot = text("Bridge chỉ forward nguồn Zalo đã được liên kết. Nội dung không được AI sửa đổi. Bot Token được mã hóa bằng Android Keystore trên thiết bị.", 12, Color.rgb(100, 116, 139), Typeface.NORMAL);
         foot.setGravity(Gravity.CENTER);
-        foot.setLineSpacing(dp(2), 1f);
+        foot.setPadding(dp(8), dp(16), dp(8), 0);
         root.addView(foot);
         return scroll;
     }
 
     private void refreshStatus() {
         boolean granted = hasListenerAccess();
-        if (accessStatus != null) {
-            accessStatus.setText(granted ? "● Đã cấp quyền — sẵn sàng nhận notification Zalo" : "● Chưa cấp quyền — app chưa thể thu thập");
-            accessStatus.setTextColor(granted ? Color.rgb(22, 101, 52) : Color.rgb(185, 28, 28));
+        boolean connected = BridgePrefs.listenerConnected(this);
+        listenerStatus.setText(granted
+                ? (connected ? "● Đã cấp quyền — Listener đang kết nối" : "● Đã cấp quyền — đang chờ Listener")
+                : "● Chưa cấp Notification Access");
+        listenerStatus.setTextColor(granted ? Color.rgb(22, 101, 52) : Color.rgb(185, 28, 28));
+
+        boolean bot = SecureStore.hasBotToken(this);
+        boolean tested = BridgePrefs.prefs(this).getBoolean("telegram_test_ok", false);
+        telegramStatus.setText(bot ? (tested ? "● Bot Token đã lưu — kết nối kiểm tra OK" : "● Bot Token đã lưu — chưa kiểm tra") : "● Chưa cấu hình Bot Token");
+        telegramStatus.setTextColor(bot ? Color.rgb(22, 101, 52) : Color.rgb(180, 83, 9));
+
+        boolean enabled = BridgePrefs.enabled(this);
+        bridgeStatus.setText(enabled ? "● ĐANG CHUYỂN TIẾP" : "● ĐÃ TẠM DỪNG");
+        bridgeStatus.setTextColor(enabled ? Color.rgb(22, 101, 52) : Color.rgb(180, 83, 9));
+
+        long seen = BridgePrefs.prefs(this).getLong("zalo_seen", 0L);
+        long forwarded = BridgePrefs.prefs(this).getLong("forwarded", 0L);
+        long failed = BridgePrefs.prefs(this).getLong("failed", 0L);
+        long lastForward = BridgePrefs.prefs(this).getLong("last_forward_ms", 0L);
+        String lastError = BridgePrefs.prefs(this).getString("last_error", "");
+        StringBuilder s = new StringBuilder();
+        s.append("Zalo đã thấy: ").append(seen)
+                .append("\nĐã forward: ").append(forwarded)
+                .append("\nĐang chờ gửi: ").append(QueueStore.size(this))
+                .append("\nLỗi/retry: ").append(failed);
+        if (lastForward > 0) s.append("\nForward gần nhất: ").append(time(lastForward));
+        if (lastError != null && !lastError.isEmpty()) s.append("\nLỗi gần nhất: ").append(lastError);
+        statsText.setText(s.toString());
+        renderRoutes();
+    }
+
+    private void renderRoutes() {
+        if (routesBox == null) return;
+        routesBox.removeAllViews();
+        List<Route> routes = RouteStore.load(this);
+        if (routes.isEmpty()) {
+            TextView empty = text("Chưa có liên kết nào.", 14, Color.rgb(100, 116, 139), Typeface.NORMAL);
+            routesBox.addView(empty);
+            return;
         }
-        boolean enabled = ProbeStore.isCaptureEnabled(this);
-        long count = ProbeStore.prefs(this).getLong("event_count", 0L);
-        long last = ProbeStore.prefs(this).getLong("last_capture_ms", 0L);
-        boolean overflow = ProbeStore.prefs(this).getBoolean("overflow", false);
-        captureStatus.setText(enabled ? "● Đang thu thập cục bộ" : "● Đã tạm dừng");
-        captureStatus.setTextColor(enabled ? Color.rgb(22, 101, 52) : Color.rgb(180, 83, 9));
-        countText.setText(String.format(Locale.getDefault(), "%,d sự kiện", count));
-        if (overflow) countText.setText(countText.getText() + "  •  ĐÃ ĐẠT GIỚI HẠN");
-        lastText.setText(last > 0 ? "Gần nhất: " + new SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(new Date(last)) : "Chưa có notification Zalo");
-        captureButton.setText(enabled ? "TẠM DỪNG THU THẬP" : "TIẾP TỤC THU THẬP");
+        for (Route r : routes) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setPadding(dp(12), dp(12), dp(12), dp(12));
+            row.setBackground(roundRect(Color.rgb(248, 250, 252), 12));
+            TextView name = text((r.enabled ? "● " : "○ ") + r.label, 15, r.enabled ? Color.rgb(22, 101, 52) : Color.rgb(71, 85, 105), Typeface.BOLD);
+            row.addView(name);
+            String target = r.telegramChat == null || r.telegramChat.trim().isEmpty() ? "Chưa chọn Telegram đích" : r.telegramChat;
+            TextView meta = text("Zalo ID: " + r.notificationId + "\nTelegram: " + target, 12, Color.rgb(100, 116, 139), Typeface.NORMAL);
+            meta.setPadding(0, dp(4), 0, dp(8));
+            row.addView(meta);
+            Button edit = secondaryButton("CHỈNH SỬA / KIỂM TRA");
+            edit.setOnClickListener(v -> editRoute(r));
+            row.addView(edit, lp(-1, dp(42), 0, 0, 0, 0));
+            routesBox.addView(row, lp(-1, -2, 0, 0, 0, 8));
+        }
+    }
+
+    private void chooseRecentSource() {
+        List<RecentSourceStore.Source> sources = RecentSourceStore.load(this);
+        if (sources.isEmpty()) {
+            Toast.makeText(this, "Chưa thấy nguồn Zalo mới. Hãy chờ nhóm/chuyên gia gửi một notification rồi thử lại.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] labels = new String[sources.size()];
+        for (int i = 0; i < sources.size(); i++) {
+            RecentSourceStore.Source s = sources.get(i);
+            String title = s.title == null || s.title.isEmpty() ? "Nguồn Zalo" : s.title;
+            String preview = s.preview == null ? "" : s.preview;
+            labels[i] = title + "\n" + (preview.length() > 60 ? preview.substring(0, 60) + "…" : preview) + "\nID " + s.notificationId;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Chọn nguồn Zalo")
+                .setItems(labels, (d, which) -> linkSource(sources.get(which)))
+                .setNegativeButton("Hủy", null)
+                .show();
+    }
+
+    private void linkSource(RecentSourceStore.Source source) {
+        Route existing = null;
+        for (Route r : RouteStore.load(this)) {
+            if (r.notificationId == source.notificationId && (r.telegramChat == null || r.telegramChat.trim().isEmpty())) { existing = r; break; }
+        }
+        Route route = existing == null ? new Route() : existing;
+        route.notificationId = source.notificationId;
+        route.keyHash = source.keyHash;
+        if (route.label == null || route.label.startsWith("Chuyên gia")) route.label = source.title == null || source.title.isEmpty() ? "Chuyên gia Zalo" : source.title;
+        editRoute(route);
+    }
+
+    private void editRoute(Route route) {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(20), dp(4), dp(20), 0);
+
+        EditText label = field(route.label, "Tên chuyên gia / nhóm Zalo");
+        EditText chat = field(route.telegramChat, "Telegram Chat ID hoặc @channel");
+        CheckBox enabled = new CheckBox(this);
+        enabled.setText("Bật auto forward");
+        enabled.setChecked(route.enabled);
+        form.addView(label, lp(-1, dp(52), 0, 8, 0, 8));
+        form.addView(chat, lp(-1, dp(52), 0, 0, 0, 8));
+        form.addView(enabled);
+        TextView source = text("Nguồn Zalo ID: " + route.notificationId, 12, Color.rgb(100, 116, 139), Typeface.NORMAL);
+        source.setPadding(0, dp(6), 0, 0);
+        form.addView(source);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Liên kết Zalo → Telegram")
+                .setView(form)
+                .setNegativeButton("Hủy", null)
+                .setNeutralButton("Xóa", null)
+                .setPositiveButton("Lưu", null)
+                .create();
+        dialog.setOnShowListener(x -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String l = label.getText().toString().trim();
+                String c = chat.getText().toString().trim();
+                if (l.isEmpty() || c.isEmpty()) {
+                    Toast.makeText(this, "Cần nhập tên và Telegram đích.", Toast.LENGTH_LONG).show();
+                    return;
+                }
+                route.label = l;
+                route.telegramChat = c;
+                route.enabled = enabled.isChecked();
+                RouteStore.upsert(this, route);
+                DedupStore.resetRoute(this, route.id);
+                dialog.dismiss();
+                refreshStatus();
+                testRoute(route);
+            });
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+                RouteStore.delete(this, route.id);
+                dialog.dismiss();
+                refreshStatus();
+            });
+        });
+        dialog.show();
+    }
+
+    private void testTelegram() {
+        String typed = tokenInput.getText().toString().trim();
+        if (!typed.isEmpty()) {
+            if (!SecureStore.saveBotToken(this, typed)) {
+                Toast.makeText(this, "Không lưu được Bot Token vào Android Keystore.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            tokenInput.setText("");
+            tokenInput.setHint("Bot Token đã lưu — nhập mới để thay");
+        }
+        String token = SecureStore.getBotToken(this);
+        if (token.isEmpty()) {
+            Toast.makeText(this, "Hãy nhập Bot Token trước.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        telegramStatus.setText("● Đang kiểm tra Telegram...");
+        new Thread(() -> {
+            TelegramApi.Result r = TelegramApi.testBot(token);
+            BridgePrefs.prefs(this).edit().putBoolean("telegram_test_ok", r.ok).putString("last_error", r.ok ? "" : r.message).apply();
+            runOnUiThread(() -> {
+                Toast.makeText(this, r.ok ? "Telegram Bot kết nối OK." : "Telegram lỗi: " + r.message, Toast.LENGTH_LONG).show();
+                refreshStatus();
+                if (r.ok) TelegramDispatcher.kick(this);
+            });
+        }).start();
+    }
+
+    private void testRoute(Route route) {
+        String token = SecureStore.getBotToken(this);
+        if (token.isEmpty()) return;
+        new Thread(() -> {
+            TelegramApi.Result r = TelegramApi.testChat(token, route.telegramChat);
+            runOnUiThread(() -> Toast.makeText(this,
+                    r.ok ? "Telegram đích “" + route.label + "” hợp lệ." : "Không truy cập được Telegram đích: " + r.message,
+                    Toast.LENGTH_LONG).show());
+        }).start();
     }
 
     private boolean hasListenerAccess() {
@@ -162,64 +340,26 @@ public class MainActivity extends Activity {
     }
 
     private void openNotificationAccess() {
-        try {
-            startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"));
-        } catch (Exception e) {
-            startActivity(new Intent(Settings.ACTION_SETTINGS));
-        }
+        try { startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")); }
+        catch (Exception e) { startActivity(new Intent(Settings.ACTION_SETTINGS)); }
     }
 
-    private void toggleCapture() {
-        ProbeStore.setCaptureEnabled(this, !ProbeStore.isCaptureEnabled(this));
-        refreshStatus();
-    }
-
-    private void createReportDocument() {
-        long count = ProbeStore.prefs(this).getLong("event_count", 0L);
-        if (count == 0) {
-            Toast.makeText(this, "Chưa có dữ liệu Zalo để xuất.", Toast.LENGTH_LONG).show();
-            return;
-        }
-        String stamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType("application/json");
-        i.putExtra(Intent.EXTRA_TITLE, "PipSniper_Zalo_Probe_Report_" + stamp + ".json");
-        startActivityForResult(i, REQ_EXPORT);
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_EXPORT || resultCode != RESULT_OK || data == null || data.getData() == null) return;
-        Uri uri = data.getData();
-        new Thread(() -> {
-            try {
-                long n = ReportExporter.export(this, uri);
-                runOnUiThread(() -> Toast.makeText(this, "Đã xuất " + n + " sự kiện. Hãy gửi file JSON này cho tôi.", Toast.LENGTH_LONG).show());
-            } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "Xuất báo cáo thất bại: " + e.getClass().getSimpleName(), Toast.LENGTH_LONG).show());
-            }
-        }).start();
-    }
-
-    private void confirmClear() {
-        new AlertDialog.Builder(this)
-                .setTitle("Xóa dữ liệu Probe?")
-                .setMessage("Chỉ dữ liệu metadata Zalo do Probe thu thập sẽ bị xóa. Zalo không bị thay đổi.")
-                .setNegativeButton("Hủy", null)
-                .setPositiveButton("Xóa", (d, w) -> {
-                    ProbeStore.clear(this);
-                    refreshStatus();
-                    Toast.makeText(this, "Đã xóa dữ liệu Probe.", Toast.LENGTH_SHORT).show();
-                }).show();
+    private EditText field(String value, String hint) {
+        EditText e = new EditText(this);
+        e.setHint(hint);
+        e.setText(value == null ? "" : value);
+        e.setSingleLine(true);
+        e.setTextSize(14);
+        e.setPadding(dp(12), dp(8), dp(12), dp(8));
+        e.setBackground(roundRect(Color.rgb(248, 250, 252), 12));
+        return e;
     }
 
     private LinearLayout card() {
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(dp(18), dp(18), dp(18), dp(18));
-        l.setBackground(roundRect(Color.WHITE, 18));
+        l.setPadding(dp(16), dp(16), dp(16), dp(16));
+        l.setBackground(roundRect(Color.WHITE, 16));
         l.setElevation(dp(1));
         return l;
     }
@@ -236,24 +376,22 @@ public class MainActivity extends Activity {
     private Button primaryButton(String s) {
         Button b = new Button(this);
         b.setText(s);
-        b.setTextSize(13);
+        b.setTextSize(12);
         b.setTextColor(Color.WHITE);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setAllCaps(false);
-        b.setBackground(roundRect(Color.rgb(37, 99, 235), 14));
-        b.setPadding(dp(14), 0, dp(14), 0);
+        b.setBackground(roundRect(Color.rgb(37, 99, 235), 12));
         return b;
     }
 
     private Button secondaryButton(String s) {
         Button b = new Button(this);
         b.setText(s);
-        b.setTextSize(13);
+        b.setTextSize(12);
         b.setTextColor(Color.rgb(30, 64, 175));
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setAllCaps(false);
-        b.setBackground(roundRect(Color.rgb(239, 246, 255), 14));
-        b.setPadding(dp(14), 0, dp(14), 0);
+        b.setBackground(roundRect(Color.rgb(239, 246, 255), 12));
         return b;
     }
 
@@ -268,6 +406,10 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(w, h);
         p.setMargins(dp(l), dp(t), dp(r), dp(b));
         return p;
+    }
+
+    private String time(long ms) {
+        return new SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()).format(new Date(ms));
     }
 
     private int dp(int v) { return Math.round(v * getResources().getDisplayMetrics().density); }
