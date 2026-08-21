@@ -35,6 +35,13 @@ public final class Hashing {
 
     public static String normalizeText(String value) {
         if (value == null) return "";
-        return value.replace('\u00a0', ' ').replaceAll("[\\t\\r ]+", " ").replaceAll("\\n{3,}", "\n\n").trim();
+        return value
+                .replace('\u00a0', ' ')
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .replaceAll("[\\t ]+", " ")
+                .replaceAll(" *\\n *", "\n")
+                .replaceAll("\\n{3,}", "\n\n")
+                .trim();
     }
 }
