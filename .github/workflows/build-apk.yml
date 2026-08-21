@@ -62,22 +62,23 @@ jobs:
           "$AAPT" dump badging "$APK" | tee badging.txt
           grep -q "android.permission.INTERNET" permissions.txt
           grep -q "package: name='com.pipsniper.zaloprobe'" badging.txt
-          grep -q "versionName='1.0.0'" badging.txt
+          grep -q "versionCode='11'" badging.txt
+          grep -q "versionName='1.1.0'" badging.txt
 
           sha256sum "$APK" | tee apk-sha256.txt
           sha256sum "$AAB" | tee aab-unsigned-sha256.txt
-          cp "$APK" PipSniper_Zalo_Bridge_V1.0-debug.apk
-          cp "$AAB" PipSniper_Zalo_Bridge_V1.0-release-unsigned.aab
+          cp "$APK" PipSniper_Zalo_Bridge_V1.1-debug.apk
+          cp "$AAB" PipSniper_Zalo_Bridge_V1.1-release-unsigned.aab
 
       - name: Upload CI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PipSniper-Zalo-Bridge-V1.0-verified
+          name: PipSniper-Zalo-Bridge-V1.1-verified
           if-no-files-found: error
           retention-days: 14
           path: |
-            PipSniper_Zalo_Bridge_V1.0-debug.apk
-            PipSniper_Zalo_Bridge_V1.0-release-unsigned.aab
+            PipSniper_Zalo_Bridge_V1.1-debug.apk
+            PipSniper_Zalo_Bridge_V1.1-release-unsigned.aab
             apk-sha256.txt
             aab-unsigned-sha256.txt
             permissions.txt
