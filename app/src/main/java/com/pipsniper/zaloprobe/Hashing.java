@@ -9,9 +9,13 @@ public final class Hashing {
 
     public static String sha256(String value) {
         if (value == null) value = "";
+        return sha256(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static String sha256(byte[] value) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] digest = md.digest(value.getBytes(StandardCharsets.UTF_8));
+            byte[] digest = md.digest(value == null ? new byte[0] : value);
             StringBuilder sb = new StringBuilder(digest.length * 2);
             for (byte b : digest) sb.append(String.format(Locale.US, "%02x", b & 0xff));
             return sb.toString();
@@ -21,6 +25,10 @@ public final class Hashing {
     }
 
     public static String shortHash(String value) {
+        return shortHash(value == null ? new byte[0] : value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    public static String shortHash(byte[] value) {
         String h = sha256(value);
         return h.substring(0, Math.min(24, h.length()));
     }
