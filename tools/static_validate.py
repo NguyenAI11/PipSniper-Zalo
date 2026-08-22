@@ -15,6 +15,7 @@ bot_engine=(base/'SmartBotEngine.java').read_text(encoding='utf-8')
 bot_security=(base/'BotSecurity.java').read_text(encoding='utf-8')
 bot_client=(base/'TelegramBotClient.java').read_text(encoding='utf-8')
 discovery=(base/'TelegramDiscovery.java').read_text(encoding='utf-8')
+icon=root/'app/src/main/res/drawable/ic_launcher_butterfly.xml'
 all_java='\n'.join(p.read_text(encoding='utf-8', errors='ignore') for p in base.glob('*.java'))
 checks={
  'internet_required':'android.permission.INTERNET' in manifest,
@@ -31,6 +32,8 @@ checks={
  'smart_bot_owner_gate':'BotSecurity.isOwner' in bot_engine and '"creator".equals(status)' in bot_engine,
  'smart_bot_commands':'setMyCommands' in bot_client and 'command("status"' in bot_client and 'command("pause"' in bot_client,
  'serialized_polling':'static synchronized ApiResult getUpdates' in bot_client and 'TelegramBotClient.getUpdates' in discovery,
+ 'launcher_icon':icon.exists() and '@drawable/ic_launcher_butterfly' in manifest,
+ 'messenger_style_ui':'Tìm chuyên gia, nhóm Telegram' in main and 'Chuyên gia liên kết' in main and 'Thao tác nhanh' in main,
  'no_hardcoded_bot_token':re.search(r'(?<![A-Za-z0-9])[0-9]{5,}:[A-Za-z0-9_-]{20,}', all_java) is None,
  'no_ai_provider':'openai.com' not in all_java.lower() and 'shopaikey' not in all_java.lower(),
 }
