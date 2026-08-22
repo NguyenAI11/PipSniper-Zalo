@@ -62,24 +62,34 @@ jobs:
           "$AAPT" dump badging "$APK" | tee badging.txt
           grep -q "android.permission.INTERNET" permissions.txt
           grep -q "package: name='com.pipsniper.zaloprobe'" badging.txt
-          grep -q "versionCode='12'" badging.txt
-          grep -q "versionName='1.2.0'" badging.txt
+          grep -q "versionCode='13'" badging.txt
+          grep -q "versionName='1.3.0'" badging.txt
+          grep -q "application-icon" badging.txt
 
           sha256sum "$APK" | tee apk-sha256.txt
           sha256sum "$AAB" | tee aab-unsigned-sha256.txt
-          cp "$APK" PipSniper_Zalo_Bridge_V1.2-debug.apk
-          cp "$AAB" PipSniper_Zalo_Bridge_V1.2-release-unsigned.aab
+          cp "$APK" PipSniper_Zalo_Bridge_V1.3-debug.apk
+          cp "$AAB" PipSniper_Zalo_Bridge_V1.3-release-unsigned.aab
+
+      - name: Package full source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=zip --output=PipSniper_Zalo_Bridge_V1.3_Source.zip HEAD
+          sha256sum PipSniper_Zalo_Bridge_V1.3_Source.zip | tee source-sha256.txt
 
       - name: Upload CI artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PipSniper-Zalo-Bridge-V1.2-verified
+          name: PipSniper-Zalo-Bridge-V1.3-verified
           if-no-files-found: error
           retention-days: 14
           path: |
-            PipSniper_Zalo_Bridge_V1.2-debug.apk
-            PipSniper_Zalo_Bridge_V1.2-release-unsigned.aab
+            PipSniper_Zalo_Bridge_V1.3-debug.apk
+            PipSniper_Zalo_Bridge_V1.3-release-unsigned.aab
+            PipSniper_Zalo_Bridge_V1.3_Source.zip
             apk-sha256.txt
             aab-unsigned-sha256.txt
+            source-sha256.txt
             permissions.txt
             badging.txt
